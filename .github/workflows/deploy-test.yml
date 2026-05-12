@@ -8,7 +8,6 @@ permissions:
   id-token: write
   contents: read
 
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -16,25 +15,25 @@ jobs:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::479802529222:role/StackFlyDeploy-2test-ammar-cbsol-react-music
+          role-to-assume: arn:aws:iam::479802529222:role/StackFlyDeploy-qa-umair2602-pipeline-testing
           aws-region: us-east-1
       - name: Login to ECR
-        run: aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 479802529222.dkr.ecr.us-east-1.amazonaws.com/stackfly-2test-test
+        run: aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 479802529222.dkr.ecr.us-east-1.amazonaws.com/stackfly-qa-api
       - name: Build & push image
         run: |
-          docker build -t 479802529222.dkr.ecr.us-east-1.amazonaws.com/stackfly-2test-test:${{ github.sha }} .
-          docker push 479802529222.dkr.ecr.us-east-1.amazonaws.com/stackfly-2test-test:${{ github.sha }}
+          docker build -t 479802529222.dkr.ecr.us-east-1.amazonaws.com/stackfly-qa-api:${{ github.sha }} .
+          docker push 479802529222.dkr.ecr.us-east-1.amazonaws.com/stackfly-qa-api:${{ github.sha }}
       - name: Record deployment start
         if: success()
         run: |
-          curl -sS -X POST "http://localhost:10000/api/164a4376-406f-4e6c-852c-0f63c2d26a70/services/bcf71b36-4759-4d2c-b16a-67dd1d70a248/deployments" \
+          curl -sS -X POST "https://stackfly.onrender.com/api/f32e18f8-bb4e-45aa-844b-ddabf1312e41/services/858ee680-3151-40ea-bab8-90938a7ba97a/deployments" \
             -H "Authorization: Bearer ${{ secrets.STACKFLY_DEPLOY_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d '{
               "phase": "start",
               "status": "running",
               "imageTag": "'${{ github.sha }}'",
-              "imageUri": "479802529222.dkr.ecr.us-east-1.amazonaws.com/stackfly-2test-test:'${{ github.sha }}'",
+              "imageUri": "479802529222.dkr.ecr.us-east-1.amazonaws.com/stackfly-qa-api:'${{ github.sha }}'",
               "gitSha": "'${{ github.sha }}'",
               "gitRef": "'${{ github.ref }}'",
               "gitRunUrl": "'${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'",
@@ -44,26 +43,26 @@ jobs:
         run: |
           aws ssm send-command \
             --document-name AWS-RunShellScript \
-            --targets "Key=tag:StackFlyEnvironmentId,Values=164a4376-406f-4e6c-852c-0f63c2d26a70" \
+            --targets "Key=tag:StackFlyEnvironmentId,Values=f32e18f8-bb4e-45aa-844b-ddabf1312e41" \
             --parameters 'commands=[
-              "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 479802529222.dkr.ecr.us-east-1.amazonaws.com/stackfly-2test-test",
-              "docker pull 479802529222.dkr.ecr.us-east-1.amazonaws.com/stackfly-2test-test:'${{ github.sha }}'",
-              "docker stop test || true",
-              "docker rm test || true",
-              "docker run -d --restart always --name test 479802529222.dkr.ecr.us-east-1.amazonaws.com/stackfly-2test-test:'${{ github.sha }}'"
+              "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 479802529222.dkr.ecr.us-east-1.amazonaws.com/stackfly-qa-api",
+              "docker pull 479802529222.dkr.ecr.us-east-1.amazonaws.com/stackfly-qa-api:'${{ github.sha }}'",
+              "docker stop api || true",
+              "docker rm api || true",
+              "docker run -d --restart always --name api 479802529222.dkr.ecr.us-east-1.amazonaws.com/stackfly-qa-api:'${{ github.sha }}'"
             ]' \
-            --comment "stackfly deploy test ${{ github.sha }}"
+            --comment "stackfly deploy api ${{ github.sha }}"
       - name: Record deployment finish
         if: always()
         run: |
-          curl -sS -X POST "http://localhost:10000/api/164a4376-406f-4e6c-852c-0f63c2d26a70/services/bcf71b36-4759-4d2c-b16a-67dd1d70a248/deployments" \
+          curl -sS -X POST "https://stackfly.onrender.com/api/f32e18f8-bb4e-45aa-844b-ddabf1312e41/services/858ee680-3151-40ea-bab8-90938a7ba97a/deployments" \
             -H "Authorization: Bearer ${{ secrets.STACKFLY_DEPLOY_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d '{
               "phase": "finish",
               "status": "succeeded",
               "imageTag": "'${{ github.sha }}'",
-              "imageUri": "479802529222.dkr.ecr.us-east-1.amazonaws.com/stackfly-2test-test:'${{ github.sha }}'",
+              "imageUri": "479802529222.dkr.ecr.us-east-1.amazonaws.com/stackfly-qa-api:'${{ github.sha }}'",
               "gitSha": "'${{ github.sha }}'",
               "gitRef": "'${{ github.ref }}'",
               "gitRunUrl": "'${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'",
