@@ -34,7 +34,7 @@ const TopSection = () => {
     <>
       <div className="grid grid-cols-12 gap-[16px] pt-4">
         <p className="font-druk-wide text-dark-grey col-span-12 sm:col-span-8 text-[16px] sm:text-[24px] leading-[20.88px] sm:leading-[56px] font-normal sm:font-medium sm:text-right">
-          EXPLORE <span className="hidden sm:inline">MUSIC</span>
+          EXPLORE NEW <span className="hidden sm:inline">MUSIC</span>
         </p>
         <div className="col-span-12 sm:col-span-4 text-right content-center sm:mb-0 mb-[24px]">
           <Tab
