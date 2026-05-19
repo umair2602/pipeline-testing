@@ -1,0 +1,107 @@
+name: deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::824867645786:role/StackFlyDeploy-test-env-2-umair2602-pipeline-testing
+          aws-region: us-east-2
+      - name: Login to ECR
+        run: aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 824867645786.dkr.ecr.us-east-2.amazonaws.com
+      - name: Build & push image
+        run: |
+          docker build -t 824867645786.dkr.ecr.us-east-2.amazonaws.com/stackfly-test-env-2-api:${{ github.sha }} .
+          docker push 824867645786.dkr.ecr.us-east-2.amazonaws.com/stackfly-test-env-2-api:${{ github.sha }}
+      - name: Record deployment start
+        run: |
+          curl -sS -X POST "https://stackfly.onrender.com/api/e6e66ee1-c99b-4b17-abdb-5d485062302e/services/4c32c9d6-a0b6-4667-8fd0-e73a166cde83/deployments" \
+            -H "Authorization: Bearer ${{ secrets.STACKFLY_DEPLOY_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d @- <<EOF
+          {
+            "phase": "start",
+            "status": "running",
+            "imageTag": "${{ github.sha }}",
+            "imageUri": "824867645786.dkr.ecr.us-east-2.amazonaws.com/stackfly-test-env-2-api:${{ github.sha }}",
+            "gitSha": "${{ github.sha }}",
+            "gitRef": "${{ github.ref }}",
+            "gitRunUrl": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "actor": "${{ github.actor }}"
+          }
+          EOF
+      - name: Deploy to EC2 via SSM
+        run: |
+          cat > /tmp/stackfly-ssm.json <<'JSON'
+          {
+            "DocumentName": "AWS-RunShellScript",
+            "Targets": [
+              {
+                "Key": "tag:StackFlyEnvironmentId",
+                "Values": [
+                  "e6e66ee1-c99b-4b17-abdb-5d485062302e"
+                ]
+              }
+            ],
+            "Parameters": {
+              "commands": [
+                "set -e",
+                "aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 824867645786.dkr.ecr.us-east-2.amazonaws.com",
+                "docker pull 824867645786.dkr.ecr.us-east-2.amazonaws.com/stackfly-test-env-2-api:${{ github.sha }}",
+                "docker stop api || true",
+                "docker rm api || true",
+                "docker run -d --restart always --name api -p 80:80 824867645786.dkr.ecr.us-east-2.amazonaws.com/stackfly-test-env-2-api:${{ github.sha }}"
+              ]
+            },
+            "Comment": "stackfly deploy api"
+          }
+          JSON
+          CMD_ID=$(aws ssm send-command --cli-input-json file:///tmp/stackfly-ssm.json --query 'Command.CommandId' --output text)
+          echo "SSM Command ID: $CMD_ID"
+          # Wait for the SSM command to reach a terminal state on every target.
+          sleep 3
+          for i in $(seq 1 60); do
+            STATUSES=$(aws ssm list-command-invocations --command-id "$CMD_ID" --query 'CommandInvocations[].Status' --output text)
+            echo "[$i] $STATUSES"
+            case "$STATUSES" in
+              *Failed*|*TimedOut*|*Cancelled*) echo "Deploy failed on at least one instance"; exit 1 ;;
+            esac
+            if [ -n "$STATUSES" ] && ! echo "$STATUSES" | grep -qE 'Pending|InProgress|Delayed'; then
+              echo "All targets reached terminal state"; break
+            fi
+            sleep 5
+          done
+      - name: Record deployment finish
+        if: always()
+        run: |
+          case "${{ job.status }}" in
+            success)   STATUS="succeeded" ;;
+            failure)   STATUS="failed" ;;
+            cancelled) STATUS="canceled" ;;
+            *)         STATUS="failed" ;;
+          esac
+          curl -sS -X POST "https://stackfly.onrender.com/api/e6e66ee1-c99b-4b17-abdb-5d485062302e/services/4c32c9d6-a0b6-4667-8fd0-e73a166cde83/deployments" \
+            -H "Authorization: Bearer ${{ secrets.STACKFLY_DEPLOY_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d @- <<EOF
+          {
+            "phase": "finish",
+            "status": "$STATUS",
+            "imageTag": "${{ github.sha }}",
+            "imageUri": "824867645786.dkr.ecr.us-east-2.amazonaws.com/stackfly-test-env-2-api:${{ github.sha }}",
+            "gitSha": "${{ github.sha }}",
+            "gitRef": "${{ github.ref }}",
+            "gitRunUrl": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "actor": "${{ github.actor }}"
+          }
+          EOF
